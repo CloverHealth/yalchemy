@@ -82,7 +82,7 @@ def test_column_default_from_invalid_sqla():
     assert 'Schema must be specified for sequence types' in str(exc.value)
 
 
-@pytest.mark.parametrize('column ,expected_metadata', [
+@pytest.mark.parametrize('column, expected_metadata', [
     (table_structures.ColumnDefault(table_structures.ColumnDefaultType.expression, '1'),
      {'type': 'expression', 'value': '1'}),
     (table_structures.ColumnDefault(table_structures.ColumnDefaultType.expression, "'foobar'"),
@@ -690,8 +690,103 @@ def test_unique_str_repr():
     assert str(idx2) == "UniqueConstraint(columns={'col_1', 'col_2'}, name='my_fixed_name')"
 
 
-# CheckConstraint
+# ExcludeConstraint
 
+@pytest.mark.parametrize('constraint, expected_metadata', [
+    (table_structures.ExcludeConstraint([['col1', '&&']]),
+     {'name': None, 'excludes': [['col1', '&&']], 'where': None}),
+    (table_structures.ExcludeConstraint([['col2', '='], ['col1', '&&']]),
+     {'name': None, 'excludes': [['col1', '&&'], ['col2', '=']], 'where': None}),
+    (table_structures.ExcludeConstraint([['col1', '&&']], where='col1=2'),
+     {'name': None, 'excludes': [['col1', '&&']], 'where': 'col1=2'}),
+    (table_structures.ExcludeConstraint([['col1', '&&']], name='check1'),
+     {'name': 'check1', 'excludes': [['col1', '&&']], 'where': None}),
+])
+def test_exclude_to_dict(constraint, expected_metadata):
+    """ Test that we convert a yalchemy ExcludeConstraint
+    into the proper dict format """
+    assert constraint.to_dict() == expected_metadata
+
+
+def test_exclude_from_dict():
+    """ Test that we get a yalchemy ExcludeConstraint from a dict correctly """
+    constraint = table_structures.ExcludeConstraint.from_dict(
+        {'name': 'check1', 'excludes': [['col1', '&&'], ['col2', '=']], 'where': 'col1=2'})
+
+    assert constraint.name == 'check1'
+    assert sorted(constraint.excludes) == [['col1', '&&'], ['col2', '=']]  # order doesn't matter
+    assert constraint.where == 'col1=2'
+
+
+def test_exclude_from_sqla(transacted_postgresql_db):
+    """ Test that we take a sa_pg.ExcludeConstraint and make the yalchemy ExcludeConstraint """
+
+    constraint = table_structures.ExcludeConstraint.from_sqla(
+        sa_pg.ExcludeConstraint((sa.Column('col1'), '&&'), (sa.Column('col2'), '=')))
+
+    assert constraint.name is None
+    assert constraint.excludes == [['col1', '&&'], ['col2', '=']]
+    assert constraint.where is None
+
+    # test with name
+    constraint = table_structures.ExcludeConstraint.from_sqla(
+        sa_pg.ExcludeConstraint((sa.Column('col1'), '='), name='check1'))
+
+    assert constraint.name == 'check1'
+    assert constraint.excludes == [['col1', '=']]
+    assert constraint.where is None
+
+    # test with where
+    constraint = table_structures.ExcludeConstraint.from_sqla(
+        sa_pg.ExcludeConstraint((sa.Column('col1'), '='), where=sa.text('col1=2')))
+
+    assert constraint.name is None
+    assert constraint.excludes == [['col1', '=']]
+    assert constraint.where == 'col1=2'
+
+
+def test_exclude_to_sqla():
+    """ Test that we make the sa_pg.ExcludeConstraint correctly from a yalchemy ExcludeConstraint """
+    constraint_obj = table_structures.ExcludeConstraint(
+        name='check1', excludes=[['col1', '&&'], ['col2', '=']], where='col1=2')
+    constraint = constraint_obj.to_sqla('table_name')
+
+    assert isinstance(constraint, sa_pg.ExcludeConstraint)
+    assert constraint.name == 'check1'
+    assert constraint.operators == {'col1': '&&', 'col2': '='}
+    assert str(constraint.where) == 'col1=2'
+
+    constraint_obj2 = table_structures.ExcludeConstraint(
+        excludes=[['col1', '&&'], ['col2', '=']], where='col1=2')
+    constraint2 = constraint_obj2.to_sqla('table_name')
+    assert constraint2.name == 'ex__26bfad53__table_name'
+
+
+def test_exclude_hashing():
+    con1 = table_structures.ExcludeConstraint(
+        name='check1', excludes=[['col1', '&&'], ['col2', '=']], where='col1=2')
+    con2 = table_structures.ExcludeConstraint(
+        name='check1', excludes=[['col1', '&&'], ['col2', '=']], where='col1=2')
+    con3 = table_structures.ExcludeConstraint(
+        excludes=[['col1', '&&'], ['col2', '=']], where='col1=2')
+    con4 = table_structures.ExcludeConstraint(
+        name='check1', excludes=[['col1', '&&'], ['col2', '=']])
+    con5 = table_structures.ExcludeConstraint(excludes=[['col1', '&&'], ['col2', '=']])
+
+    assert hash(con1) == hash(con2)
+    assert hash(con1) != hash(con3)
+    assert hash(con1) != hash(con4)
+    assert hash(con1) != hash(con5)
+    assert hash(con3) != hash(con4)
+    assert hash(con4) != hash(con5)
+
+
+def test_exclude_invalid_excludes():
+    with pytest.raises(ValueError):
+        table_structures.ExcludeConstraint([['col1', '&&'], ['col1', '=']])
+
+
+# CheckConstraint
 
 @pytest.mark.parametrize('constraint, expected_metadata', [
     (table_structures.CheckConstraint('check1', 'col1 > col2'),
@@ -707,7 +802,6 @@ def test_constraint_to_dict(constraint, expected_metadata):
 
 def test_constraint_from_dict():
     """ Test that we get a yalchemy CheckConstraint from a dict correctly """
-
     constraint = table_structures.CheckConstraint.from_dict(
         {'name': 'check1', 'check': 'col1 > col2'})
 
@@ -753,7 +847,7 @@ def test_constraint_to_sqla():
     assert str(constraint.sqltext) == 'col1 < col2'
 
 
-def test_constraint_hasing():
+def test_constraint_hashing():
     con1 = table_structures.CheckConstraint('check1', 'col1 > col2')
     con2 = table_structures.CheckConstraint('check1', 'col1 > col2')
     assert {con1: 1}[con2] == 1
@@ -781,7 +875,8 @@ def test_table_from_dict():
         ],
         'indexes': [{'columns': ['col1', 'col2']}],
         'unique_constraints': [{'columns': ['col3']}],
-        'primary_keys': ['col2', 'col1']
+        'exclude_constraints': [{'excludes': [['col1', '='], ['col2', '=']]}],
+        'primary_keys': ['col2', 'col1'],
     }
     table = table_structures.Table.from_dict(table_dict)
 
@@ -805,6 +900,9 @@ def test_table_from_dict():
     assert table.unique_constraints == {
         table_structures.UniqueConstraint(['col3']),
     }
+    assert table.exclude_constraints == {
+        table_structures.ExcludeConstraint([['col1', '='], ['col2', '=']])
+    }
     assert table.primary_keys == {'col1', 'col2'}
 
 
@@ -820,6 +918,7 @@ def test_table_from_sqla():
         sa.ForeignKeyConstraint(['col1'], ['other_table.other_col']),
         sa.UniqueConstraint('col2'),
         sa.CheckConstraint('col1::text != col2', name='check1'),
+        sa_pg.ExcludeConstraint((sa.Column('col1'), '='), (sa.Column('col2'), '=')),
         schema='test_schema')
 
     table = table_structures.Table.from_sqla(sa_table)
@@ -843,6 +942,9 @@ def test_table_from_sqla():
     assert table.check_constraints == {
         table_structures.CheckConstraint(
             'check1', 'col1::text != col2')
+    }
+    assert table.exclude_constraints == {
+        table_structures.ExcludeConstraint([['col1', '='], ['col2', '=']])
     }
 
 
@@ -870,7 +972,8 @@ def test_table_from_sqla_equality_from_to_yaml(transacted_postgresql_db):
             -- default sequence shorthand
             col7 serial
             constraint check1 check ((col1 != 'value')),
-            constraint check2 check ((col1 != 'value') and (col2 != 0))
+            constraint check2 check ((col1 != 'value') and (col2 != 0)),
+            exclude (col1 with =, col2 with =)
         );
         create index idx ON schema.my_table (col1, col2);
     ''')
@@ -901,9 +1004,13 @@ def test_table_from_sqla_equality_from_to_yaml(transacted_postgresql_db):
         ],
         'indexes': [{'columns': ['col1', 'col2']}],
         'unique_constraints': [{'columns': ['col3']}],
+        'exclude_constraints': [{'excludes': [['col1', '='], ['col2', '=']]}],
         'primary_keys': ['col2']
     }
     orig_table = table_structures.Table.from_dict(table_dict)
+
+    # Sqlalchemy can't reflect exclude constraints
+    orig_table.exclude_constraints = set()
 
     reflected_sa = sa.Table('my_table', metadata,
                             schema='schema',
@@ -990,6 +1097,9 @@ def test_table_to_dict():
         unique_constraints=[
             table_structures.UniqueConstraint(['another_id'], name='unique1'),
         ],
+        exclude_constraints=[
+            table_structures.ExcludeConstraint([['col1', '='], ['col2', '=']]),
+        ],
         check_constraints=[
             table_structures.CheckConstraint('check1', 'id != other_id')
         ])
@@ -1015,7 +1125,10 @@ def test_table_to_dict():
             {'columns': ['another_id'], 'name': 'unique1'}
         ],
         'primary_keys': ['another_id', 'id', 'other_id'],
-        'check_constraints': [{'name': 'check1', 'check': 'id != other_id'}]
+        'check_constraints': [{'name': 'check1', 'check': 'id != other_id'}],
+        'exclude_constraints': [
+            {'name': None, 'excludes': [['col1', '='], ['col2', '=']], 'where': None},
+        ],
     }
 
 
@@ -1043,6 +1156,9 @@ def test_table_to_sqla():
         indexes=[table_structures.Index(['col1'])],
         primary_keys=['col2'],
         unique_constraints=[table_structures.UniqueConstraint(['col3'], name='uq_col3')],
+        exclude_constraints=[
+            table_structures.ExcludeConstraint([['col1', '='], ['col2', '=']], name='ex_col1_col2')
+        ],
         check_constraints=[table_structures.CheckConstraint('check1', 'col1::text != col2')])
 
     meta = sa.MetaData()
@@ -1054,6 +1170,9 @@ def test_table_to_sqla():
     assert [i.constraint.columns.keys() for i in sa_table.foreign_keys] == [['col2']]
     assert [j.name for i in sa_table.indexes for j in i.expressions] == ['col1']
     assert [(c.name, c.sqltext) for c in sa_table.constraints if isinstance(c, sa.CheckConstraint)]
+    assert [(c.name, c.operators, c.where)
+            for c in sa_table.constraints if isinstance(c, sa_pg.ExcludeConstraint)] == \
+           [('ex_col1_col2', {'col1': '=', 'col2': '='}, None)]
     assert [(c.name, [col.name for col in c.columns])
             for c in sa_table.constraints if isinstance(c, sa.UniqueConstraint)] == \
            [('uq_col3', ['col3'])]
@@ -1092,6 +1211,9 @@ def test_table_or():
         unique_constraints=[
             table_structures.UniqueConstraint('other_id'),
         ],
+        exclude_constraints=[
+            table_structures.ExcludeConstraint([['id', '='], ['other_id', '=']]),
+        ],
         check_constraints=[
             table_structures.CheckConstraint('check1', 'id != other_id'),
         ])
@@ -1124,6 +1246,11 @@ def test_table_or():
     other.unique_constraints = {table_structures.UniqueConstraint('another_id')}
     merged = table | other
     assert not merged.unique_constraints
+
+    other = copy.deepcopy(table)
+    other.exclude_constraints = {table_structures.ExcludeConstraint([['another_id', '=']])}
+    merged = table | other
+    assert not merged.exclude_constraints
 
     other = copy.deepcopy(table)
     other.check_constraints = {table_structures.CheckConstraint('check2', 'other_id != 1')}

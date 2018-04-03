@@ -609,6 +609,103 @@ class UniqueConstraint(_ColumnCollection):
         return sa.UniqueConstraint(*self.columns, name=name)
 
 
+class ExcludeConstraint(Yalchemy, _ComparableMixin):
+    """ A yalchemy ExcludeConstraint that can be converted to a sqlalchemy ExcludeConstraint"""
+    __slots__ = ('name', 'excludes', 'where')
+    HASHED_NAME_PREFIX = 'ex'
+
+    def __init__(self, excludes, name=None, where=None):
+        self._validate_excludes(excludes)
+        self.excludes = excludes
+        self.name = name
+        self.where = where
+
+    @classmethod
+    def from_dict(cls, dict_obj):
+        """ Creates a yalchemy CheckConstraint from a dictionary.
+
+        The dictionary has the following specification::
+
+            {
+                # The check is the string of the check we want to
+                # have on the constraint. It should be verbatium
+                # what the check would be in SQL
+                'excludes': list(required),
+                'name': str(optional),
+                'where': str(optional),
+            }
+        """
+        return cls(name=dict_obj.get('name'), excludes=dict_obj['excludes'],
+                   where=dict_obj.get('where'))
+
+    @classmethod
+    def from_sqla(cls, sqla_obj):
+        """ Create a yalchemy ExcludeConstraint from a sqlalchemy ExcludeConstraint """
+        excludes = [[col, op] for col, op in sqla_obj.operators.items()]
+        where = str(sqla_obj.where) if sqla_obj.where is not None else sqla_obj.where
+        return cls(name=sqla_obj.name, excludes=excludes, where=where)
+
+    def _to_dict(self):
+        """ Converts the yalchemy ExcludeConstraint to a dictionary """
+        return {'name': self.name, 'excludes': sorted(self.excludes), 'where': self.where}
+
+    def to_sqla(self, table_name):
+        """ Converts the yalchemy ExcludeConstraint to a sqlalchemy ExcludeConstraint. """
+        sa_excludes = [(sa.Column(e[0]), e[1]) for e in self.excludes]
+        return sa_pg.ExcludeConstraint(
+            *sa_excludes,
+            where=sa.text(self.where) if self.where is not None else self.where,
+            name=self.name or self._create_hashed_name(table_name),
+        )
+
+    @staticmethod
+    def _validate_excludes(excludes):
+        """Check excludes for overlaps"""
+        col_to_ops = {}
+        for ex in excludes:
+            col = ex[0]
+            if col not in col_to_ops:
+                col_to_ops[col] = []
+            col_to_ops[col].append(ex[1])
+
+        invalid_excludes = [(col, ops) for col, ops in col_to_ops.items() if len(ops) > 1]
+        if invalid_excludes:
+            raise ValueError('Overlapping exclude constraints: {}'.format(invalid_excludes))
+
+    def _create_hashed_name(self, table_name):
+        """ Create the hashed name of this collection object for the table given the list
+        of columns and the table name """
+
+        excludes_str = [str(e) for e in self.excludes]
+        params_str = table_name + ':' + ','.join(excludes_str) + ':' + str(self.where)
+        hash_value = hashlib.md5(params_str.encode('utf-8')).hexdigest()[0:8]
+
+        return '{prefix}__{hash_value}__{table_name}'.format(
+            prefix=self.HASHED_NAME_PREFIX,
+            hash_value=hash_value,
+            table_name=table_name
+        )[0:63]
+
+    def _as_tuple(self):
+        """Convert to tuple for ease of comparison."""
+        return (self.name, tuple((e[0], e[1]) for e in sorted(self.excludes)), self.where)
+
+    def __lt__(self, other):  # pragma: no cover
+        if not self._comparable(other):
+            return NotImplemented
+        return self._as_tuple() < other._as_tuple()  # pylint: disable=protected-access
+
+    def __hash__(self):
+        return hash(self._as_tuple())
+
+    def __copy__(self):  # pragma: no cover
+        return ExcludeConstraint(self.name, self.excludes, self.where)
+
+    def __repr__(self):  # pragma: no cover
+        return 'ExcludeConstraint(name={s.name!r}, excludes={s.excludes!r}, where={s.where!r})'\
+            .format(s=self)
+
+
 @functools.total_ordering  # make Check constraint sortable via __eq__ and __lt__
 class CheckConstraint(Yalchemy, _ComparableMixin):
     """ A yalchemy CheckConstraint that can be converted to a sqlalchemy CheckConstraint
@@ -691,11 +788,11 @@ class CheckConstraint(Yalchemy, _ComparableMixin):
 class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-attributes
     """ A yalchemy Table that can be converted to a sqlalchemy Table """
     __slots__ = ('name', 'schema', 'columns', 'primary_keys', 'foreign_keys', 'indexes',
-                 'unique_constraints', 'check_constraints', 'doc')
+                 'unique_constraints', 'check_constraints', 'exclude_constraints', 'doc')
 
     def __init__(self, name, schema, columns=None, foreign_keys=None,
                  primary_keys=None, indexes=None, check_constraints=None, unique_constraints=None,
-                 doc=None):
+                 exclude_constraints=None, doc=None):
         self.name = str(name)
         self.schema = str(schema)
         self.columns = columns or ()
@@ -704,6 +801,7 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
         self.primary_keys = {str(key) for key in primary_keys or ()}
         self.check_constraints = set(check_constraints or ())
         self.unique_constraints = set(unique_constraints or ())
+        self.exclude_constraints = set(exclude_constraints or ())
         self.doc = doc
 
     @property
@@ -768,6 +866,7 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
                 'indexes': [{'columns': ['col1', 'col2']}],
                 'unique_constraints': [{'name': 'my_unique_constraint', 'columns': ['col2']}],
                 'check_constraints': [{'name': 'my_check', 'check': 'char_length(col1) = col2'}]
+                'exclude_constraints': [{'name': 'my_exclude_constraint', 'constraints': [['col1', '=']]}]
                 'primary_keys': ['col2']
             }
         """
@@ -786,6 +885,9 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
         ]
         dict_obj['check_constraints'] = [
             CheckConstraint.from_dict(i) for i in dict_obj.get('check_constraints', [])
+        ]
+        dict_obj['exclude_constraints'] = [
+            ExcludeConstraint.from_dict(i) for i in dict_obj.get('exclude_constraints', [])
         ]
 
         return cls(**dict_obj)
@@ -808,10 +910,12 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
                              if isinstance(c, sa.CheckConstraint)]
         unique_constraints = [UniqueConstraint.from_sqla(c) for c in sqla_obj.constraints
                               if isinstance(c, sa.UniqueConstraint)]
+        exclude_constraints = [ExcludeConstraint.from_sqla(c) for c in sqla_obj.constraints
+                               if isinstance(c, sa_pg.ExcludeConstraint)]
         return cls(
             sqla_obj.name, schema=sqla_obj.schema, columns=columns, foreign_keys=foreign_keys,
             primary_keys=primary_keys, indexes=indexes, check_constraints=check_constraints,
-            unique_constraints=unique_constraints)
+            unique_constraints=unique_constraints, exclude_constraints=exclude_constraints)
 
     def _to_dict(self):
         """ Converts the yalchemy Table to a dictionary """
@@ -834,6 +938,8 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
             table_metadata['unique_constraints'] = [c.to_dict() for c in self.unique_constraints]
         if self.check_constraints:
             table_metadata['check_constraints'] = [c.to_dict() for c in self.check_constraints]
+        if self.exclude_constraints:
+            table_metadata['exclude_constraints'] = [c.to_dict() for c in self.exclude_constraints]
         return table_metadata
 
     def to_sqla(self, metadata=None, include_indexes=True):  # pylint: disable=arguments-differ
@@ -852,8 +958,10 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
             indexes = [i.to_sqla(table_name=self.name) for i in self.indexes]
             unique_constraints = [c.to_sqla(table_name=self.name) for c in self.unique_constraints]
         check_constraints = [c.to_sqla() for c in self.check_constraints]
+        exclude_constraints = [c.to_sqla(table_name=self.name) for c in self.exclude_constraints]
         columns = [c.to_sqla(is_primary=c.name in self.primary_keys) for c in self.columns]
-        table_elements = columns + indexes + unique_constraints + check_constraints
+        table_elements = columns + indexes + unique_constraints + check_constraints \
+            + exclude_constraints
 
         table = sa.Table(
             self.name,
@@ -889,6 +997,7 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
             primary_keys=self.primary_keys,
             unique_constraints=self.unique_constraints & other.unique_constraints,
             check_constraints=self.check_constraints & other.check_constraints,
+            exclude_constraints=self.exclude_constraints & other.exclude_constraints,
             doc=self.doc)
 
     def __copy__(self):  # pragma: no cover
@@ -901,6 +1010,7 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
             indexes=self.indexes,
             unique_constraints=self.unique_constraints,
             check_constraints=self.check_constraints,
+            exclude_constraints=self.exclude_constraints,
             doc=self.doc)
 
     def __repr__(self):
