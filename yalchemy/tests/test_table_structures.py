@@ -973,7 +973,7 @@ def test_table_from_sqla_equality_from_to_yaml(transacted_postgresql_db):
             col7 serial
             constraint check1 check ((col1 != 'value')),
             constraint check2 check ((col1 != 'value') and (col2 != 0)),
-            exclude (col1 with =, col2 with =)
+            exclude (col1 with =, col2 with =) where (col2 = 2)
         );
         create index idx ON schema.my_table (col1, col2);
     ''')
@@ -1010,6 +1010,8 @@ def test_table_from_sqla_equality_from_to_yaml(transacted_postgresql_db):
     orig_table = table_structures.Table.from_dict(table_dict)
 
     # Sqlalchemy can't reflect exclude constraints
+    # TODO: figure out how to reflect psql specific constraints and test
+    # https://cloverhealth.atlassian.net/browse/OO-251
     orig_table.exclude_constraints = set()
 
     reflected_sa = sa.Table('my_table', metadata,
