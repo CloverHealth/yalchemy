@@ -1,6 +1,11 @@
 CHANGES
 =======
 
+0.2.5
+-----
+
+* Remove temporary README.md which is taking precedence over README.rst (#2)
+
 0.2.4
 -----
 
