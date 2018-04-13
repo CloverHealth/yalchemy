@@ -1,0 +1,111 @@
+CHANGES
+=======
+
+0.2.3
+-----
+
+* Update to latest template (#22)
+
+0.2.2
+-----
+
+* Sort the primary keys in the table to\_dict output (#21)
+
+0.2.1
+-----
+
+* Upgraded to latest template (#20)
+* Update test\_requirements.txt (#19)
+
+0.2.0
+-----
+
+* sem-ver: feature, Added Column Defaults (#18)
+
+0.1.0
+-----
+
+* sem-ver: feature, Added unique constraints and named indexes (#17)
+
+0.0.16
+------
+
+* Updated to latest python template (#16)
+
+0.0.15
+------
+
+* Added geography field support (#15)
+
+0.0.14
+------
+
+* Add clean datatypes (#14)
+
+0.0.13
+------
+
+* Revert "clean the datatypes so they are always consistent in the yalchemy.Column.datatype field"
+* clean the datatypes so they are always consistent in the yalchemy.Column.datatype field
+
+0.0.12
+------
+
+* add docs to tables and columns (#13)
+
+0.0.11
+------
+
+* Constraint edge case (#12)
+
+0.0.10
+------
+
+* Add the pretty yaml Dumper to the interface (#11)
+
+0.0.9
+-----
+
+* Pretty print yaml in order of the \_\_slots\_\_ on table\_structures (#10)
+
+0.0.8
+-----
+
+* Added to\_yaml and from\_yaml methods to yalchemy objects
+
+0.0.7
+-----
+
+* Update how CheckConstraint performs equality comparison (#8)
+
+0.0.6
+-----
+
+* remove null values and context (#7)
+
+0.0.5
+-----
+
+* Add check constraints (#6)
+
+0.0.4
+-----
+
+* Unique constraint fix (#5)
+
+0.0.3
+-----
+
+* Docs for yalchemy and changes to the spec of Tables and Columns
+
+0.0.2
+-----
+
+* Yalchemy interface (#3)
+
+0.0.1
+-----
+
+* fix pylint
+* initial package of yalchemy
+* Initial Scaffolding [skip ci]
