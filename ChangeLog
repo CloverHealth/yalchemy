@@ -1,6 +1,11 @@
 CHANGES
 =======
 
+0.2.6
+-----
+
+* Relax core dependencies and fix AUTHORS (#3)
+
 0.2.5
 -----
 
