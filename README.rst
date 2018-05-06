@@ -14,6 +14,14 @@ yalchemy can be installed with::
     pip3 install yalchemy
 
 
+Primary Authors
+===============
+
+* Wes Kendall <wesleykendall@gmail.com>
+* Chris Hartfield <chris.hartfield@cloverhealth.com>
+
+Other contributors can be found in the AUTHORS file
+
 Contributing Guide
 ==================
 
