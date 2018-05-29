@@ -1,6 +1,11 @@
 CHANGES
 =======
 
+0.2.8
+-----
+
+* Improve yaml loader for Yalchemy.from\_yaml() (#7)
+
 0.2.7
 -----
 
