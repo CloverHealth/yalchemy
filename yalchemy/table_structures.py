@@ -1,5 +1,5 @@
 """Common table abstractions and utilities."""
-# pylint: disable=arguments-differ
+# pylint: disable=arguments-differ,too-many-lines
 import abc
 import collections
 import copy
@@ -59,6 +59,12 @@ class _ComparableMixin:
             return NotImplemented
 
 
+try:
+    DefaultYamlLoader = yaml.CSafeLoader
+except AttributeError:  # pragma: no cover
+    DefaultYamlLoader = yaml.SafeLoader
+
+
 class Yalchemy(metaclass=abc.ABCMeta):
     """ The base yalchemy object that defines the interface for serialization """
 
@@ -114,13 +120,23 @@ class Yalchemy(metaclass=abc.ABCMeta):
         return yaml.dump(self.to_dict(), Dumper=pretty_yaml.PrettyYalchemyDumper)
 
     @classmethod
-    def from_yaml(cls, yaml_str):
+    def from_yaml(cls, yaml_str, loader_factory=None):
         """ Loads a yalchemy object from a yaml string
 
         Args:
             yaml (str): The yaml string
+            loader_factory (function(stream)): (optional) constructs a custom PyYaml loader.
+                If not provided and libyaml is installed, it will default to CSafeLoader.
+                If not provided and libyaml is not installed, it will default to SafeLoader.
         """
-        dict_obj = yaml.safe_load(yaml_str)
+        loader_factory = loader_factory or DefaultYamlLoader
+        loader = loader_factory(yaml_str)
+
+        try:
+            dict_obj = loader.get_single_data()
+        finally:
+            loader.dispose()
+
         if not isinstance(dict_obj, dict):  # pragma: no cover
             raise ValueError('from_yaml only supports loading yaml dictionaries')
 
