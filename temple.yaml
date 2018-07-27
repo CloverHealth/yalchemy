@@ -1,6 +1,6 @@
 _extensions: [jinja2_time.TimeExtension]
 _template: git@github.com:CloverHealth/temple-python-public.git
-_version: 796a0dd70d6311b4ef6f00f2d281a7fece75f179
+_version: adc85355497ab10936879eedeeec27e1307a5079
 deploy_branch: master
 module_name: yalchemy
 repo_name: yalchemy

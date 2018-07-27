@@ -61,6 +61,9 @@ jobs:
       - image: *docker_image
     steps:
       - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "af:a6:bf:48:f0:08:d6:0f:19:4f:fd:10:f2:9d:50:2c"
       - run:
           <<: *dependencies
       - run: pip install -q -r deploy_requirements.txt
