@@ -1,6 +1,11 @@
 CHANGES
 =======
 
+0.2.11
+------
+
+* primary keys should be ordered (#13)
+
 0.2.10
 ------
 
