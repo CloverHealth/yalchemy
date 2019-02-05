@@ -805,7 +805,7 @@ def test_table_from_dict():
     assert table.unique_constraints == {
         table_structures.UniqueConstraint(['col3']),
     }
-    assert table.primary_keys == {'col1', 'col2'}
+    assert table.primary_keys == ('col2', 'col1')
 
 
 def test_table_from_sqla():
@@ -836,7 +836,7 @@ def test_table_from_sqla():
     assert table.indexes == {
         table_structures.Index(columns={'col1', 'col2'})
     }
-    assert table.primary_keys == {'col1'}
+    assert table.primary_keys == ('col1',)
     assert table.unique_constraints == {
         table_structures.UniqueConstraint(['col2'])
     }
