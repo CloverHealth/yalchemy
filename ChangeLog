@@ -1,6 +1,16 @@
 CHANGES
 =======
 
+0.2.13
+------
+
+* update deploy key
+
+0.2.12
+------
+
+* respect column ordering in yalchemy indexes and primary keys (#15)
+
 0.2.11
 ------
 
