@@ -104,15 +104,13 @@ class Yalchemy(metaclass=abc.ABCMeta):
                 construction (e.g. sqlalchemy MetaData)
         """
 
-    @abc.abstractclassmethod
-    def from_sqla(cls, sqla_obj, **kwargs):
+    @classmethod
+    @abc.abstractmethod
+    def from_sqla(cls, sqla_obj):
         """ Constructs a yalchemy object from a sqlalchemy object
 
         Args:
             sqla_obj: The sqlalchemy object
-            kwargs: Keyword arguments specific to the yalchemy object
-                being created. Some objects need special parameters for their
-                construction (e.g. sqlalchemy MetaData)
         """
 
     def to_yaml(self):
@@ -352,12 +350,8 @@ class Column(Yalchemy, _ComparableMixin):
 
         return metadata
 
-    def to_sqla(self, is_primary):  # pylint: disable=arguments-differ
-        """ Converts the yalchemy Column to a sqlalchemy Column
-
-        Args:
-            is_primary (bool): ``True`` if the column is a primary key
-        """
+    def to_sqla(self):  # pylint: disable=arguments-differ
+        """ Converts the yalchemy Column to a sqlalchemy Column """
         sa_type = sqla_utils.sa_type_from_str(self.datatype, self.format)
         column_args = [self.name, sa_type]
 
@@ -373,8 +367,8 @@ class Column(Yalchemy, _ComparableMixin):
             server_default = None
 
         return sa.Column(
-            *column_args, key=self.name, primary_key=is_primary,
-            nullable=not self.required, server_default=server_default)
+            *column_args, key=self.name, nullable=not self.required,
+            server_default=server_default)
 
     @staticmethod
     def _get_col_type(sqlalchemy_type):
@@ -509,12 +503,12 @@ class ForeignKey(Yalchemy, _ComparableMixin):
 
 @functools.total_ordering  # make sortable via __eq__ and __lt__
 class _ColumnCollection(Yalchemy, _ComparableMixin):
-    """ Base class for any Yalchemy object that comprises a column collection """
+    """ Base class for Yalchemy index column collections """
     __slots__ = ('name', 'columns',)
     HASHED_NAME_PREFIX = None
 
     def __init__(self, columns, name=None):
-        self.columns = set(columns)
+        self.columns = columns
         self.name = name
 
     @classmethod
@@ -538,7 +532,7 @@ class _ColumnCollection(Yalchemy, _ComparableMixin):
     def _to_dict(self):
         """ Converts the column collection to a dictionary """
 
-        result = {'columns': sorted(self.columns)}
+        result = {'columns': self.columns}
 
         # include name only if it was explicitly set
         if self.name:
@@ -560,7 +554,7 @@ class _ColumnCollection(Yalchemy, _ComparableMixin):
         """ Create the hashed name of this collection object for the table given the list
         of columns and the table name """
 
-        params_str = table_name + ':' + ','.join(sorted(self.columns))
+        params_str = table_name + ':' + ','.join(self.columns)
         hash_value = hashlib.md5(params_str.encode('utf-8')).hexdigest()[0:8]
 
         return '{prefix}__{hash_value}__{table_name}'.format(
@@ -574,8 +568,8 @@ class _ColumnCollection(Yalchemy, _ComparableMixin):
         """ Constructs the sqlalchemy object associated with this yalchemy object """
 
     def _as_tuple(self):
-        """Convert to tuple for ease of comparison."""
-        return tuple(sorted(self.columns))
+        """Compare only on the columns, not the name."""
+        return tuple(self.columns)
 
     def __lt__(self, other):
         if not self._comparable(other):  # pragma: no cover
@@ -591,9 +585,8 @@ class _ColumnCollection(Yalchemy, _ComparableMixin):
 
     def __repr__(self):
         name_detail = ', name={!r}'.format(self.name) if self.name else ''
-        # force set display to be consistently sorted
-        sorted_set_detail = '{' + ', '.join(sorted('{!r}'.format(c) for c in self.columns)) + '}'
-        return '{}(columns={}{})'.format(self.__class__.__name__, sorted_set_detail, name_detail)
+        column_detail = ', '.join(repr(c) for c in self.columns)
+        return '{}(columns=[{}]{})'.format(self.__class__.__name__, column_detail, name_detail)
 
 
 class Index(_ColumnCollection):
@@ -607,7 +600,7 @@ class Index(_ColumnCollection):
     def from_sqla(cls, sqla_obj):
         """ Create a yalchemy Index from a sqlalchemy Index """
         return cls(
-            columns=[str(c.name if isinstance(c, sa.Column) else str(c))
+            columns=[str(c.name if isinstance(c, sa.Column) else c)
                      for c in sqla_obj.expressions])
 
 
@@ -717,7 +710,7 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
         self.columns = columns or ()
         self.foreign_keys = set(foreign_keys or ())
         self.indexes = set(indexes or ())
-        self.primary_keys = tuple(str(key) for key in primary_keys or ())
+        self.primary_keys = [str(key) for key in primary_keys or []]
         self.check_constraints = set(check_constraints or ())
         self.unique_constraints = set(unique_constraints or ())
         self.doc = doc
@@ -752,7 +745,8 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
                 # specification provided in the `Index.from_dict` documentation
                 'indexes': list[dict](optional),
 
-                # The list of column names (as strings) that are primary keys
+                # The list of column names (as strings) that are primary keys. The unique
+                # constraint is made with the columns in the given order.
                 'primary_keys': list[str](optional),
 
                 # The list of unique constraints.  Unique constraints follow the
@@ -817,7 +811,7 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
         columns = [Column.from_sqla(col) for col in sqla_obj.c]
         foreign_keys = [ForeignKey.from_sqla(fkey.constraint) for col in sqla_obj.c
                         for fkey in col.foreign_keys]
-        primary_keys = [col.name for col in sqla_obj.c if col.primary_key]
+        primary_keys = [col.name for col in sqla_obj.primary_key]
         indexes = [Index.from_sqla(i) for i in sqla_obj.indexes]
 
         check_constraints = [CheckConstraint.from_sqla(c) for c in sqla_obj.constraints
@@ -841,15 +835,17 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
         if self.doc:
             table_metadata['doc'] = self.doc
         if self.primary_keys:
-            table_metadata['primary_keys'] = sorted(list(self.primary_keys))
+            table_metadata['primary_keys'] = self.primary_keys
         if self.foreign_keys:
             table_metadata['foreign_keys'] = [fk.to_dict() for fk in sorted(self.foreign_keys)]
         if self.indexes:
             table_metadata['indexes'] = [ix.to_dict() for ix in sorted(self.indexes)]
         if self.unique_constraints:
-            table_metadata['unique_constraints'] = [c.to_dict() for c in self.unique_constraints]
+            table_metadata['unique_constraints'] = [
+                c.to_dict() for c in sorted(self.unique_constraints)]
         if self.check_constraints:
-            table_metadata['check_constraints'] = [c.to_dict() for c in self.check_constraints]
+            table_metadata['check_constraints'] = [
+                c.to_dict() for c in sorted(self.check_constraints)]
         return table_metadata
 
     def to_sqla(self, metadata=None, include_indexes=True):  # pylint: disable=arguments-differ
@@ -868,8 +864,9 @@ class Table(Yalchemy, _ComparableMixin):  # pylint: disable=too-many-instance-at
             indexes = [i.to_sqla(table_name=self.name) for i in self.indexes]
             unique_constraints = [c.to_sqla(table_name=self.name) for c in self.unique_constraints]
         check_constraints = [c.to_sqla() for c in self.check_constraints]
-        columns = [c.to_sqla(is_primary=c.name in self.primary_keys) for c in self.columns]
-        table_elements = columns + indexes + unique_constraints + check_constraints
+        columns = [c.to_sqla() for c in self.columns]
+        primary_key = [sa.PrimaryKeyConstraint(*self.primary_keys)]
+        table_elements = columns + primary_key + indexes + unique_constraints + check_constraints
 
         table = sa.Table(
             self.name,

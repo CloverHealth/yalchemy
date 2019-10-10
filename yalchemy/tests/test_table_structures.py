@@ -320,32 +320,28 @@ def test_column_to_dict(column, expected_metadata):
 
 
 @pytest.mark.parametrize(
-    'yalchemy_col,sa_col,is_primary,default_sa_obj_cls,default_sa_expression', [
+    'yalchemy_col,sa_col,default_sa_obj_cls,default_sa_expression', [
         (table_structures.Column(name='my_col', datatype='integer', required=False),
-         sa.Column('my_col', sa.Integer, primary_key=False, nullable=True),
-         False,
+         sa.Column('my_col', sa.Integer, nullable=True),
          None,
          None),
         (table_structures.Column(name='my_col', datatype='varchar', format_=[123], required=True),
-         sa.Column('my_col', sa.VARCHAR(123), primary_key=True, nullable=False),
-         True,
+         sa.Column('my_col', sa.VARCHAR(123), nullable=False),
          None,
          None),
         (table_structures.Column(name='my_col', datatype='uuid', format_=[True], required=True,
                                  default=table_structures.ColumnDefault(
                                      table_structures.ColumnDefaultType.expression,
                                      'uuid_generate_v4()')),
-         sa.Column('my_col', sa_pg.UUID(as_uuid=True), primary_key=False, nullable=False,
+         sa.Column('my_col', sa_pg.UUID(as_uuid=True), nullable=False,
                    server_default=sa.text('uuid_generate_v4()')),
-         False,
          sa_elements.TextClause,
          'uuid_generate_v4()'),
         (table_structures.Column(name='my_col', datatype='integer', required=True,
                                  default=table_structures.ColumnDefault(
                                      table_structures.ColumnDefaultType.expression,
                                      '1')),
-         sa.Column('my_col', sa.Integer, primary_key=True, nullable=False, server_default='1'),
-         True,
+         sa.Column('my_col', sa.Integer, nullable=False, server_default='1'),
          sa_elements.TextClause,
          '1'),
         (table_structures.Column(name='my_col', datatype='integer', required=True,
@@ -354,24 +350,21 @@ def test_column_to_dict(column, expected_metadata):
                                      'schema.my_col_seq')),
          # pylint: disable=no-value-for-parameter
          sa.Column('my_col', sa.Integer, sa.Sequence('my_col_seq', schema='schema'),
-                   primary_key=True, nullable=False,
+                   nullable=False,
                    server_default=sa.Sequence('my_col_seq', schema='schema').next_value()),
          # pylint: enable=no-value-for-parameter
-         True,
          sa_func.next_value,
          'schema.my_col_seq'),
     ]
 )
-def test_column_to_sqla(yalchemy_col, sa_col, is_primary,
-                        default_sa_obj_cls, default_sa_expression):
+def test_column_to_sqla(yalchemy_col, sa_col, default_sa_obj_cls, default_sa_expression):
     """ Test that we turn a yalchemy column into a sqlalchemy column """
 
-    generated_col = yalchemy_col.to_sqla(is_primary=is_primary)
+    generated_col = yalchemy_col.to_sqla()
     assert generated_col.name == sa_col.name
     assert generated_col.type.compile(sa_pg.dialect()) == \
         sa_col.type.compile(sa_pg.dialect())
     assert generated_col.nullable == sa_col.nullable
-    assert generated_col.primary_key == is_primary
     if default_sa_obj_cls is not None:
         assert isinstance(generated_col.server_default, sa.DefaultClause)
 
@@ -519,12 +512,8 @@ def test_foreign_key_hasing():
 @pytest.mark.parametrize('idx, expected_metadata', [
     (table_structures.Index(['col_1']),
      {'columns': ['col_1']}),
-    (table_structures.Index(['col_2', 'col_1']),
-     {'columns': ['col_1', 'col_2']}),
     (table_structures.Index(['col_1', 'col_2']),
      {'columns': ['col_1', 'col_2']}),
-    (table_structures.Index(['col_1', 'col_1']),
-     {'columns': ['col_1']}),
 ])
 def test_index_to_dict(idx, expected_metadata):
     assert idx.to_dict() == expected_metadata
@@ -536,7 +525,7 @@ def test_index_from_dict():
     index = table_structures.Index.from_dict(
         {'columns': ['col1', 'col2']})
 
-    assert index.columns == {'col1', 'col2'}
+    assert index.columns == ['col1', 'col2']
 
 
 def test_index_from_sqla():
@@ -545,7 +534,7 @@ def test_index_from_sqla():
     index = table_structures.Index.from_sqla(
         sa.Index('some_index', 'a_col', 'another_col'))
 
-    assert index.columns == {'a_col', 'another_col'}
+    assert index.columns == ['a_col', 'another_col']
 
 
 def test_index_to_sqla_unnamed():
@@ -573,7 +562,7 @@ def test_index_to_sqla_named():
 
 def test_index_hashing():
     idx1 = table_structures.Index(['col_1', 'col_2'])
-    idx2 = table_structures.Index(['col_2', 'col_1'])
+    idx2 = table_structures.Index(['col_1', 'col_2'])
     assert {idx1: 1}[idx2] == 1
     assert {idx1} == {idx2}
     assert {idx1, idx2} == {idx1}
@@ -581,10 +570,10 @@ def test_index_hashing():
 
 def test_index_str_repr():
     idx1 = table_structures.Index(['col_1', 'col_2'])
-    assert str(idx1) == "Index(columns={'col_1', 'col_2'})"
+    assert str(idx1) == "Index(columns=['col_1', 'col_2'])"
 
     idx2 = table_structures.Index(['col_1', 'col_2'], name='my_fixed_name')
-    assert str(idx2) == "Index(columns={'col_1', 'col_2'}, name='my_fixed_name')"
+    assert str(idx2) == "Index(columns=['col_1', 'col_2'], name='my_fixed_name')"
 
 
 # UNIQUE CONSTRAINTS
@@ -593,9 +582,7 @@ def test_index_str_repr():
     (table_structures.UniqueConstraint(['col_1']),
      {'columns': ['col_1']}),
     (table_structures.UniqueConstraint(['col_2', 'col_1']),
-     {'columns': ['col_1', 'col_2']}),
-    (table_structures.UniqueConstraint(['col_1', 'col_1']),
-     {'columns': ['col_1']}),
+     {'columns': ['col_2', 'col_1']}),
 ])
 def test_unique_to_dict(constraint, expected_metadata):
     assert constraint.to_dict() == expected_metadata
@@ -607,7 +594,7 @@ def test_unique_from_dict():
     constraint = table_structures.UniqueConstraint.from_dict(
         {'columns': ['col1', 'col2']})
 
-    assert constraint.columns == {'col1', 'col2'}
+    assert constraint.columns == ['col1', 'col2']
 
 
 def test_unique_from_sqla():
@@ -627,7 +614,7 @@ def test_unique_from_sqla():
 
     constraint = table_structures.UniqueConstraint.from_sqla(unique_constraint)
 
-    assert constraint.columns == {'a_col', 'another_col'}
+    assert constraint.columns == ['a_col', 'another_col']
 
 
 def test_unique_to_sqla_unnamed():
@@ -676,7 +663,7 @@ def test_unique_to_sqla_named():
 
 def test_unique_hashing():
     unique1 = table_structures.UniqueConstraint(['col_1', 'col_2'])
-    unique2 = table_structures.UniqueConstraint(['col_2', 'col_1'])
+    unique2 = table_structures.UniqueConstraint(['col_1', 'col_2'])
     assert {unique1: 1}[unique2] == 1
     assert {unique1} == {unique2}
     assert {unique1, unique2} == {unique1}
@@ -684,10 +671,10 @@ def test_unique_hashing():
 
 def test_unique_str_repr():
     idx1 = table_structures.UniqueConstraint(['col_1', 'col_2'])
-    assert str(idx1) == "UniqueConstraint(columns={'col_1', 'col_2'})"
+    assert str(idx1) == "UniqueConstraint(columns=['col_1', 'col_2'])"
 
     idx2 = table_structures.UniqueConstraint(['col_1', 'col_2'], name='my_fixed_name')
-    assert str(idx2) == "UniqueConstraint(columns={'col_1', 'col_2'}, name='my_fixed_name')"
+    assert str(idx2) == "UniqueConstraint(columns=['col_1', 'col_2'], name='my_fixed_name')"
 
 
 # CheckConstraint
@@ -800,12 +787,12 @@ def test_table_from_dict():
             column='col2', remote_table='other_table', remote_column='other_col'),
     }
     assert table.indexes == {
-        table_structures.Index(columns={'col1', 'col2'})
+        table_structures.Index(columns=['col1', 'col2'])
     }
     assert table.unique_constraints == {
         table_structures.UniqueConstraint(['col3']),
     }
-    assert table.primary_keys == ('col2', 'col1')
+    assert table.primary_keys == ['col2', 'col1']
 
 
 def test_table_from_sqla():
@@ -834,9 +821,9 @@ def test_table_from_sqla():
             column='col1', remote_table='other_table', remote_column='other_col'),
     }
     assert table.indexes == {
-        table_structures.Index(columns={'col1', 'col2'})
+        table_structures.Index(columns=['col1', 'col2'])
     }
-    assert table.primary_keys == ('col1',)
+    assert table.primary_keys == ['col1']
     assert table.unique_constraints == {
         table_structures.UniqueConstraint(['col2'])
     }
@@ -1008,13 +995,13 @@ def test_table_to_dict():
             {'column': 'other_id', 'remote_table': 'other', 'remote_column': 'id'},
         ],
         'indexes': [
-            {'columns': ['id', 'other_id']},
             {'columns': ['other_id']},
+            {'columns': ['other_id', 'id']},
         ],
         'unique_constraints': [
             {'columns': ['another_id'], 'name': 'unique1'}
         ],
-        'primary_keys': ['another_id', 'id', 'other_id'],
+        'primary_keys': ['id', 'another_id', 'other_id'],
         'check_constraints': [{'name': 'check1', 'check': 'id != other_id'}]
     }
 

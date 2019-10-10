@@ -13,3 +13,6 @@ pylint==1.8.2
 pytest==3.4.0
 pytest-mock==1.6.3
 pytest-pgsql==1.0.1
+
+# pin PyYaml for tests only as version 5 changes the dump formatting
+PyYAML==3.13
