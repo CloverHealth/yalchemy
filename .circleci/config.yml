@@ -63,7 +63,7 @@ jobs:
       - checkout
       - add_ssh_keys:
           fingerprints:
-            - "af:a6:bf:48:f0:08:d6:0f:19:4f:fd:10:f2:9d:50:2c"
+            - "fc:1c:ce:b5:88:a8:3b:c0:79:ec:88:06:eb:dd:28:69"
       - run:
           <<: *dependencies
       - run: pip install -q -r deploy_requirements.txt
