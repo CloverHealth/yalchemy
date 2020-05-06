@@ -1,7 +1,10 @@
 CHANGES
 =======
 
-* Upgrade attrs and pytest
+0.2.14
+------
+
+* [SRE-544] Upgrade the dependency (#17)
 
 0.2.13
 ------
