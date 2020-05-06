@@ -1,6 +1,11 @@
 CHANGES
 =======
 
+0.2.15
+------
+
+* SRE-544 Unpin the minor version
+
 0.2.14
 ------
 
