@@ -25,13 +25,17 @@ tables:
   - name: test_table
     schema: test_schema
     columns:
-      - {name: my_col, datatype: text, required: false}
+      - name: my_col
+        datatype: text
+        required: false
 """
 
 REVERSE_TEST_YAML_PRETTY = """
 tables:
   - columns:
-      - {required: false, datatype: text, name: my_col}
+      - required: false
+        datatype: text
+        name: my_col
     schema: test_schema
     name: test_table
 """
@@ -41,7 +45,9 @@ tables:
   - name: test_table
     schema: test_schema
     columns:
-      - {name: my_col, datatype: text, required: false}
+      - name: my_col
+        datatype: text
+        required: false
     doc: !my_custom_tag 'My Description'
 """
 REVERSE_TEST_YAML_CUSTOM_TAG = """
@@ -49,7 +55,9 @@ tables:
   - name: test_table
     schema: test_schema
     columns:
-      - {name: my_col, datatype: text, required: false}
+      - name: my_col
+        datatype: text
+        required: false
     doc: --My Description--
 """
 

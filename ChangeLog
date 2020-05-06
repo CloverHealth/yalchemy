@@ -1,6 +1,8 @@
 CHANGES
 =======
 
+* Upgrade attrs and pytest
+
 0.2.13
 ------
 
